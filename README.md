@@ -1,6 +1,6 @@
 # ReaderX
 
-> Nobody actually wants to read the paper. But your PI will ask about it on Monday. ReaderX is the compromise.
+> Read enough of the paper to convincingly pretend you read the paper.
 
 ![ReaderX screenshot](screenshot.png)
 
