@@ -295,7 +295,8 @@ async function loadHtmlFromUrl(url, meta) {
   const resp = await fetch(url, { redirect: 'follow', mode: 'cors' });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const html = await resp.text();
-  renderHtmlDocument(html, url);
+  // Use resp.url so redirects (e.g., trailing-slash normalisation) are honored.
+  renderHtmlDocument(html, resp.url || url);
   // Try to pick up the real paper title from the document.
   const t = new DOMParser().parseFromString(html, 'text/html');
   const title = t.querySelector('h1.ltx_title, h1.title, h1')?.textContent?.trim();
@@ -307,10 +308,29 @@ async function loadHtmlFromUrl(url, meta) {
 function renderHtmlDocument(htmlText, baseUrl) {
   const parsed = new DOMParser().parseFromString(htmlText, 'text/html');
   // Safety: strip anything that could execute or pull in remote assets,
-  // BUT keep <figure>, <img>, and <svg> — they are essential for papers.
+  // BUT keep <figure>, <img>, <svg>, and image <object>s — essential for papers.
   parsed.querySelectorAll(
-    'script, link[rel="stylesheet"], iframe, object, embed, style'
+    'script, link[rel="stylesheet"], iframe, embed, style'
   ).forEach(el => el.remove());
+  // arxiv/ar5iv wrap figures in <object type="image/svg+xml" data="assets/x.svg">.
+  // Convert these to <img> so they render (and can be lightboxed). Non-image
+  // objects are removed for safety (they could load anything).
+  parsed.querySelectorAll('object').forEach(obj => {
+    const type = (obj.getAttribute('type') || '').toLowerCase();
+    const data = obj.getAttribute('data');
+    if (data && type.startsWith('image/')) {
+      const img = parsed.createElement('img');
+      img.setAttribute('src', data);
+      // Carry over sizing + classes for CSS.
+      for (const attr of ['class','width','height','alt','id','style']) {
+        const v = obj.getAttribute(attr);
+        if (v != null) img.setAttribute(attr, v);
+      }
+      obj.replaceWith(img);
+    } else {
+      obj.remove();
+    }
+  });
 
   const main =
     parsed.querySelector('article.ltx_document, article, main, [role="main"], .ltx_page_main') ||
@@ -328,8 +348,26 @@ function renderHtmlDocument(htmlText, baseUrl) {
   wrapper.innerHTML = main.innerHTML;
   pdfContainer.appendChild(wrapper);
 
-  // Resolve relative URLs. Use base URL of the loaded doc.
-  const base = new URL(baseUrl);
+  // Resolve relative URLs. Use base URL of the loaded doc, with these
+  // adjustments so that references like `assets/foo.svg` resolve correctly:
+  //   1. honor a <base href> tag inside the document if present
+  //   2. arxiv HTML paper URLs like `.../html/2103.10360` need a trailing `/`
+  //      or the URL parser treats `2103.10360` as a file, dropping it.
+  let effectiveBase = baseUrl;
+  const baseTag = parsed.querySelector('base[href]');
+  if (baseTag) {
+    try { effectiveBase = new URL(baseTag.getAttribute('href'), baseUrl).href; } catch {}
+  }
+  try {
+    const eb = new URL(effectiveBase);
+    const looksLikeFile = /\.[a-z0-9]{2,5}(?:$|[?#])/i.test(eb.pathname);
+    if (!eb.pathname.endsWith('/') && !looksLikeFile) {
+      eb.pathname += '/';
+      effectiveBase = eb.href;
+    }
+  } catch {}
+  const base = new URL(effectiveBase);
+
   wrapper.querySelectorAll('img[src]').forEach(img => {
     try { img.src = new URL(img.getAttribute('src'), base).href; } catch {}
     img.loading = 'lazy';
@@ -342,6 +380,13 @@ function renderHtmlDocument(htmlText, baseUrl) {
       try { return `${new URL(u, base).href} ${d || ''}`.trim(); } catch { return p; }
     });
     img.srcset = parts.join(', ');
+  });
+  wrapper.querySelectorAll('source[srcset]').forEach(s => {
+    const parts = s.getAttribute('srcset').split(',').map(p => {
+      const [u, d] = p.trim().split(/\s+/);
+      try { return `${new URL(u, base).href} ${d || ''}`.trim(); } catch { return p; }
+    });
+    s.srcset = parts.join(', ');
   });
   wrapper.querySelectorAll('svg').forEach(svg => {
     svg.addEventListener('click', () => openLightbox(svg.cloneNode(true)));
@@ -452,8 +497,20 @@ function finalizePara(p) {
 }
 
 function stripCitations(text) {
+  // Numeric bracket cites: [12], [3, 5–7]
   text = text.replace(/\s?\[\s*\d+(\s*[,;\-–—]\s*\d+)*\s*\]/g, '');
-  text = text.replace(/\s?\([A-Z][^()]{0,80}\b(?:19|20)\d{2}[a-z]?\s*\)/g, '');
+  // Author-year parens with a capitalised name AT THE START:
+  //   (Smith 2020), (Smith and Jones, 2020a), (Smith et al., 2019; Jones 2020)
+  text = text.replace(/\s?\([A-Z][^()]{0,120}\b(?:19|20)\d{2}[a-z]?\s*\)/g, '');
+  // Signal-phrase parens where the capitalised name is preceded by a lowercase
+  // cue like "see", "e.g.", "cf.", "after", "following":
+  //   (see Gilchrist, 2011), (e.g., Smith 2020; Jones et al. 2019),
+  //   (cf. Rayner et al., 2016)
+  text = text.replace(
+    /\s?\((?:see|e\.g\.,?|i\.e\.,?|cf\.?|following|after|from|adapted from|reviewed in|as in|compare)\s+[^()]{0,150}\b(?:19|20)\d{2}[a-z]?\s*\)/gi,
+    ''
+  );
+  // Superscript reference numbers (¹²³ etc.)
   text = text.replace(/[\u00B2\u00B3\u00B9\u2070-\u2079]+/g, '');
   return text;
 }
@@ -461,6 +518,9 @@ function stripCitations(text) {
 function splitIntoWords(text) {
   text = stripCitations(text);
   text = text.replace(/(\w)-\s+(\w)/g, '$1$2');
+  // Pad unspaced em/en dashes ("exhaustive—it") so they become their own
+  // beat in the RSVP stream instead of being glued to adjacent words.
+  text = text.replace(/([^\s])([\u2014\u2013])([^\s])/g, '$1 $2 $3');
   text = text.replace(/\s+([.,;:!?])/g, '$1');
   text = text.replace(/\s+/g, ' ').trim();
   const rough = text.split(' ').filter(Boolean);
@@ -771,6 +831,7 @@ async function toggleHighlight() {
   // Re-render current paragraph to reflect highlight class changes.
   renderParagraphText(p);
   updateWordUI();
+  applyDomHighlights();
 }
 
 async function loadHighlightsForCurrent() {
@@ -778,6 +839,95 @@ async function loadHighlightsForCurrent() {
   if (!currentPaper) return;
   const all = await DB.listHighlightsFor(currentPaper.id).catch(() => []);
   for (const h of all) highlightSet.add(`${h.paraIdx}:${h.sentenceIdx}`);
+  applyDomHighlights();
+}
+
+/* Left-pane / over-PDF highlight rendering.
+ *   PDF mode:  toggles `.has-highlights` on each paragraph's overlay so a
+ *              yellow tab sits over the page even when it isn't the active para.
+ *   HTML mode: toggles the class on the paragraph element AND, when available,
+ *              paints the actual sentence text using the CSS Custom Highlights
+ *              API (no DOM mutation, works across inline element boundaries).
+ */
+function applyDomHighlights() {
+  paragraphs.forEach(p => {
+    if (p.overlay) p.overlay.classList.remove('has-highlights');
+    if (p.element) p.element.classList.remove('has-highlights');
+  });
+  const paraSet = new Set();
+  for (const k of highlightSet) paraSet.add(parseInt(k.split(':')[0], 10));
+  for (const pi of paraSet) {
+    const p = paragraphs[pi];
+    if (!p) continue;
+    if (p.overlay) p.overlay.classList.add('has-highlights');
+    if (p.element) p.element.classList.add('has-highlights');
+  }
+  paintHtmlSentenceHighlights();
+}
+
+function paintHtmlSentenceHighlights() {
+  if (mode !== 'html') return;
+  if (typeof CSS === 'undefined' || !('highlights' in CSS) || typeof Highlight === 'undefined') return;
+  const ranges = [];
+  for (const k of highlightSet) {
+    const [pi, si] = k.split(':').map(Number);
+    const p = paragraphs[pi];
+    if (!p?.element || !p.sentences?.[si]) continue;
+    const s = p.sentences[si];
+    const words = p.words.slice(s.start, s.end + 1);
+    const r = findSentenceRange(p.element, words);
+    if (r) ranges.push(r);
+  }
+  try {
+    if (ranges.length) CSS.highlights.set('rx-hl', new Highlight(...ranges));
+    else CSS.highlights.delete('rx-hl');
+  } catch (e) { console.warn('CSS highlights failed', e); }
+}
+
+// Walk visible text nodes in `root`, then locate the sentence by matching
+// its first and last alphanumeric-only word tokens. Fuzzy on spacing/citations.
+function findSentenceRange(root, words) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode(n) {
+      const skip = n.parentElement?.closest(
+        'math, .ltx_Math, mjx-container, figure, .ltx_figure, figcaption, .ltx_caption, script, style'
+      );
+      return skip ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+    }
+  });
+  const parts = [];
+  let combined = '';
+  let node;
+  while ((node = walker.nextNode())) {
+    parts.push({ node, offset: combined.length, len: node.textContent.length });
+    combined += node.textContent;
+  }
+  if (!combined) return null;
+  const alnum = s => s.replace(/[^A-Za-z0-9]/g, '');
+  const first = alnum(words[0]);
+  const last  = alnum(words[words.length - 1]);
+  if (!first || !last) return null;
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const firstRe = new RegExp('(?:^|[^A-Za-z0-9])(' + esc(first) + ')(?![A-Za-z0-9])');
+  const m1 = firstRe.exec(combined);
+  if (!m1) return null;
+  const startPos = m1.index + m1[0].indexOf(m1[1]);
+  const budget = words.reduce((a, w) => a + w.length + 1, 0) + 200;
+  const windowStr = combined.slice(startPos, startPos + budget);
+  const lastRe = new RegExp('(?:^|[^A-Za-z0-9])(' + esc(last) + ')(?![A-Za-z0-9])', 'g');
+  let lastMatch = null, mm;
+  while ((mm = lastRe.exec(windowStr)) !== null) lastMatch = mm;
+  if (!lastMatch) return null;
+  const endPos = startPos + lastMatch.index + lastMatch[0].indexOf(lastMatch[1]) + last.length;
+  const startLoc = parts.find(pp => startPos >= pp.offset && startPos <= pp.offset + pp.len);
+  const endLoc   = parts.find(pp => endPos   >= pp.offset && endPos   <= pp.offset + pp.len);
+  if (!startLoc || !endLoc) return null;
+  try {
+    const range = document.createRange();
+    range.setStart(startLoc.node, startPos - startLoc.offset);
+    range.setEnd(endLoc.node, endPos - endLoc.offset);
+    return range;
+  } catch { return null; }
 }
 
 /* ==================== library UI ==================== */
@@ -926,7 +1076,7 @@ document.addEventListener('keydown', e => {
   if (e.shiftKey && e.code === 'ArrowRight') { e.preventDefault(); stop(); nextSentence(); return; }
   if (e.shiftKey && e.code === 'ArrowLeft')  { e.preventDefault(); stop(); prevSentence(); return; }
   if (e.code === 'Home' || (e.key === 's' && !e.metaKey && !e.ctrlKey)) {
-    e.preventDefault(); stop(); jumpToSentenceStart(); return;
+    e.preventDefault(); stop(); jumpToSentenceStart(); play(); return;
   }
   if (e.key === 'h' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); toggleHighlight(); return; }
   if (e.key === 'l' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); openLibrary();   return; }

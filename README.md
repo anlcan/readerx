@@ -1,5 +1,9 @@
 # ReaderX
 
+> Nobody actually wants to read the paper. But your PI will ask about it on Monday. ReaderX is the compromise.
+
+![ReaderX screenshot](screenshot.png)
+
 A three-pane PDF reader with a bionic-reading text pane and an RSVP speed-reader.
 
 - **Left** — PDF rendered by [PDF.js](https://mozilla.github.io/pdf.js/). The paragraph you're on is highlighted.
@@ -26,7 +30,7 @@ Then open http://localhost:8765/.
 | ← / → | Previous / next paragraph |
 | ↑ / ↓ | Step one word back / forward |
 | Shift + ← / → | Previous / next sentence |
-| Home  or  `s` | Jump to start of current sentence |
+| Home  or  `s` | Jump to start of current sentence and auto-play |
 | `h` | Toggle highlight on current sentence |
 | `l` | Open library |
 | Esc | Close lightbox / library |
@@ -50,7 +54,7 @@ browser (IndexedDB, database `readerx`). Nothing leaves your machine. Open the
 
 - **Paragraphs from PDFs** — inferred from line gaps + x-indentation (heuristic; two-column layouts are lossy).
 - **Hyphenation** — end-of-line `word-\nfragment` is rejoined when the next line starts lowercase (also handles Unicode hyphen and soft hyphen).
-- **Citations** — numeric brackets (`[12, 15]`) and author-year parens (`(Smith 2020)`) are stripped from the RSVP stream so timing stays clean.
+- **Citations** — numeric brackets (`[12, 15]`), author-year parens (`(Smith 2020)`) and signal-phrase cites (`(see Gilchrist, 2011)`, `(e.g., Smith 2020)`, `(cf. Rayner et al., 2016)`) are stripped from the RSVP stream so timing stays clean.
 - **RSVP timing** — base `60000 / wpm` ms per word, +15% for long words, +80% after sentence-ending punctuation, +35% after commas.
 - **ORP table** — Spritz-style (`1 → 0`, `2–5 → 1`, `6–9 → 2`, `10–13 → 3`, `14+ → 4`).
 - **Bionic bold** — hand-tuned lighter than [text-vide](https://github.com/Gumball12/text-vide)'s default; leading/trailing punctuation excluded from the bold span.
