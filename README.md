@@ -25,8 +25,20 @@ Then open http://localhost:8765/.
 | Space | Play / pause RSVP |
 | ← / → | Previous / next paragraph |
 | ↑ / ↓ | Step one word back / forward |
+| Shift + ← / → | Previous / next sentence |
+| Home  or  `s` | Jump to start of current sentence |
+| `h` | Toggle highlight on current sentence |
+| `l` | Open library |
+| Esc | Close lightbox / library |
 
 Click any paragraph on the PDF, or any word in the Reading pane, to jump to it.
+Click any figure in HTML mode to open the lightbox.
+
+## Storage
+
+Papers you open, your reading position, and highlights are saved locally in your
+browser (IndexedDB, database `readerx`). Nothing leaves your machine. Open the
+**Library** to reopen recent papers or export all highlights as Markdown.
 
 ## Files
 

@@ -17,9 +17,11 @@
       Load PDF
       <input type="file" id="fileInput" accept="application/pdf" hidden>
     </label>
-    <button id="prevPara" title="Previous paragraph">◀ Para</button>
+    <button id="prevPara" title="Previous paragraph (←)">◀ Para</button>
     <button id="playBtn" title="Play/Pause (space)">▶ Play</button>
-    <button id="nextPara" title="Next paragraph">Para ▶</button>
+    <button id="nextPara" title="Next paragraph (→)">Para ▶</button>
+    <button id="highlightBtn" title="Highlight current sentence (h)">✎</button>
+    <button id="libraryBtn" title="Library (l)">☰ Library</button>
     <label class="wpm">
       WPM
       <input type="range" id="wpm" min="100" max="1000" step="25" value="350">
@@ -55,6 +57,27 @@
     </div>
   </section>
 </main>
+
+<div id="lightbox" class="lightbox hidden" role="dialog" aria-label="Figure viewer">
+  <button class="lightbox-close" aria-label="Close">×</button>
+  <div class="lightbox-content"></div>
+</div>
+
+<div id="libraryModal" class="modal hidden" role="dialog" aria-label="Library">
+  <div class="modal-panel">
+    <div class="modal-header">
+      <span>Library</span>
+      <div class="modal-actions">
+        <button id="exportHighlightsBtn" title="Export all highlights as Markdown">Export highlights</button>
+        <button id="libraryCloseBtn" aria-label="Close">×</button>
+      </div>
+    </div>
+    <div id="libraryList" class="modal-body"></div>
+    <div class="modal-footer">
+      <span class="muted">Reading position and highlights are saved automatically in your browser (IndexedDB).</span>
+    </div>
+  </div>
+</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
