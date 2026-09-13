@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ReaderX — PDF + RSVP</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">ReaderX</div>
+  <div class="controls">
+    <input type="text" id="urlInput" class="url-input"
+           placeholder="Paste arxiv or PDF URL and press Enter"
+           spellcheck="false" autocomplete="off">
+    <button id="urlLoad">Load URL</button>
+    <label class="file-btn">
+      Load PDF
+      <input type="file" id="fileInput" accept="application/pdf" hidden>
+    </label>
+    <button id="prevPara" title="Previous paragraph">◀ Para</button>
+    <button id="playBtn" title="Play/Pause (space)">▶ Play</button>
+    <button id="nextPara" title="Next paragraph">Para ▶</button>
+    <label class="wpm">
+      WPM
+      <input type="range" id="wpm" min="100" max="1000" step="25" value="350">
+      <span id="wpmLabel">350</span>
+    </label>
+    <span class="status" id="status">Loading…</span>
+  </div>
+</header>
+
+<main class="layout">
+  <section class="pane pdf-pane" id="pdfPane">
+    <div id="pdfContainer"></div>
+  </section>
+
+  <section class="pane right-pane">
+    <div class="pane text-pane">
+      <div class="pane-title">Reading</div>
+      <div id="paraText" class="paragraph"></div>
+      <div class="para-meta">
+        <span id="paraCounter">–</span>
+        <span id="paraProgress">–</span>
+      </div>
+    </div>
+    <div class="pane rsvp-pane">
+      <div class="pane-title">RSVP</div>
+      <div id="rsvp" class="rsvp">
+        <div class="rsvp-guide"></div>
+        <div id="rsvpWord" class="rsvp-word">—</div>
+      </div>
+      <div class="rsvp-meta">
+        <span id="rsvpStatus">Idle</span>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+</script>
+<script src="app.js"></script>
+</body>
+</html>
